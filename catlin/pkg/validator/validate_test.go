@@ -18,78 +18,14 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/tektoncd/plumbing/catlin/pkg/app"
-	"github.com/tektoncd/plumbing/catlin/pkg/parser"
-	"go.uber.org/zap"
 	"gotest.tools/v3/assert"
+
+	"github.com/tektoncd/plumbing/catlin/pkg/parser"
+	"github.com/tektoncd/plumbing/catlin/pkg/test"
 )
 
-var validTask = `
----
-apiVersion: tekton.dev/v1beta1
-kind: Task
-metadata:
-  name: valid
-  labels:
-    app.kubernetes.io/version: a,b,c
-  annotations:
-    tekton.dev/tags: a,b,c
-    tekton.dev/pipelines.minVersion: "0.12"
-    tekton.dev/displayName: My Example Task
-spec:
-  description: |-
-    A summary of the resource
-
-    A para about this valid task
-
-  steps:
-  - name: hello
-    image: ubuntu:latest
-    command: [sleep, infinity]
-`
-
-var validPipeline = `
----
-apiVersion: tekton.dev/v1beta1
-kind: Pipeline
-metadata:
-  name: valid
-  labels:
-    app.kubernetes.io/version: a,b,c
-  annotations:
-    tekton.dev/tags: a,b,c
-    tekton.dev/pipelines.minVersion: "0.12"
-    tekton.dev/displayName: My Example Task
-spec:
-  description: |-
-    A summary of the resource
-
-    A para about this valid task
-
-  tasks:
-  - name: hello
-    taskRef:
-      name: hello
-`
-
-type TestConfig struct {
-	log *zap.Logger
-}
-
-var _ app.CLI = (*TestConfig)(nil)
-
-func (t *TestConfig) Logger() *zap.Logger {
-	return t.log
-}
-
-func (t *TestConfig) Stream() *app.Stream {
-	return nil
-}
-
 func TestContentValidator_Task(t *testing.T) {
-	log, _ := zap.NewDevelopment()
-
-	tc := &TestConfig{log: log}
+	tc := test.New()
 
 	r := strings.NewReader(validTask)
 	parser := parser.ForReader(r)
@@ -100,15 +36,12 @@ func TestContentValidator_Task(t *testing.T) {
 	v := NewContentValidator(tc, res)
 	result := v.Validate()
 
-	//t.Logf("%v", result.Lints)
 	assert.Equal(t, 0, result.Errors)
 	assert.Equal(t, 0, len(result.Lints))
 }
 
 func TestContentValidator_Pipeline(t *testing.T) {
-	log, _ := zap.NewDevelopment()
-
-	tc := &TestConfig{log: log}
+	tc := test.New()
 
 	r := strings.NewReader(validPipeline)
 	parser := parser.ForReader(r)
@@ -121,4 +54,37 @@ func TestContentValidator_Pipeline(t *testing.T) {
 
 	assert.Equal(t, 0, result.Errors)
 	assert.Equal(t, 0, len(result.Lints))
+}
+
+func TestValidatorForKind_Task(t *testing.T) {
+
+	r := strings.NewReader(validTask)
+	parser := parser.ForReader(r)
+
+	res, err := parser.Parse()
+	assert.NilError(t, err)
+
+	v := ForKind(res)
+	result := v.Validate()
+
+	assert.Equal(t, 0, result.Errors)
+	assert.Equal(t, 0, len(result.Lints))
+}
+
+func TestValidatorForKind_Task_InvalidImageRef(t *testing.T) {
+
+	r := strings.NewReader(taskWithInvalidImageRef)
+	parser := parser.ForReader(r)
+
+	res, err := parser.Parse()
+	assert.NilError(t, err)
+
+	v := ForKind(res)
+	result := v.Validate()
+
+	assert.Equal(t, 3, result.Errors)
+	assert.Equal(t, 3, len(result.Lints))
+	assert.Equal(t, "Invalid Image Reference: could not parse reference: ubuntu", result.Lints[0].Message)
+	assert.Equal(t, "Task image (abc.io/fedora:latest) must be tagged with a specific version", result.Lints[1].Message)
+	assert.Equal(t, "Invalid Image Reference: could not parse reference: abc.io/fedora:1.0@sha256:deadb33fdeadb33fdeadb33f", result.Lints[2].Message)
 }
