@@ -45,15 +45,16 @@ func (t *TaskValidator) Validate() Result {
 
 	for _, step := range res.(*v1beta1.Task).Spec.Steps {
 
-		res, err := name.ParseReference(step.Image, name.StrictValidation)
+		ref, err := name.ParseReference(step.Image, name.StrictValidation)
 		if err != nil {
-			result.Error("Invalid Image Reference: %s", err)
+			result.Error("Step %q has an invalid image: %s", step.Name, err)
 			continue
 		}
 
-		if strings.Contains(res.String(), "latest") {
-			result.Error("Task image (%s) must be tagged with a specific version", step.Image)
+		if strings.Contains(ref.Identifier(), "latest") {
+			result.Error("Step %q image (%s) must be tagged with a specific version", step.Name, step.Image)
 		}
+
 	}
 
 	return result
